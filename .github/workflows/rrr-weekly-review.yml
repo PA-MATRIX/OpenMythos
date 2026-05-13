@@ -1,0 +1,35 @@
+name: RRR Weekly AI Code Review
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Monday 09:00 UTC
+  workflow_dispatch:      # allow manual fire from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Trigger rrr-coordinator (sprite executor) — sync /review-repo
+        env:
+          RRR_COORDINATOR_TOKEN: ${{ secrets.RRR_COORDINATOR_TOKEN }}
+          SPRITE_URL: https://rrr-mah-sample-va-v1-3-team-pilot-team-platform-brkri.sprites.app
+        run: |
+          set -euo pipefail
+          echo "Firing whole-repo review of kyegomez/OpenMythos → PA-MATRIX/OpenMythos"
+          curl -sS --max-time 1500 \
+            -H "Authorization: Bearer $RRR_COORDINATOR_TOKEN" \
+            -H "Content-Type: application/json" \
+            -X POST "$SPRITE_URL/review-repo" \
+            -d '{"source_repo":"kyegomez/OpenMythos","output_repo":"PA-MATRIX/OpenMythos","sync":true}' \
+            -o /tmp/review-result.json -w "HTTP %{http_code} (%{time_total}s)\n"
+          echo "--- result ---"
+          jq -r '{status, exit_code, started_at, finished_at, job_id} | to_entries[] | "\(.key): \(.value)"' /tmp/review-result.json
+          STATUS=$(jq -r '.status' /tmp/review-result.json)
+          if [ "$STATUS" != "done" ]; then
+            echo "::error::Review did not complete (status=$STATUS)"
+            exit 1
+          fi
+          echo "::notice::Review posted to PA-MATRIX/OpenMythos. Check Issues tab for the new ai-code-review issue."
